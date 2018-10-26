@@ -1,3 +1,4 @@
+import sys
 import os
 import shutil
 import csv
@@ -52,13 +53,29 @@ ride_metrics = [
     'training_stress_score'
 ]
 
-
 class StravaExport:
     def __init__(self, path, out):
         self.zip_file = path
         self.out = out
         self.id = int(os.path.basename(path).split('_')[1])
-        self.rides = defaultdict(list)
+        self.ftp_hist = self.__ftp_hist()
+
+    def __ftp_hist(self):
+        ftp_f = 'ftp_{}.csv'.format(self.id)
+        ftp_p = os.path.join(base_dir, 'ref', ftp_f)
+        if os.path.exists(ftp_p):
+            ftp_pd = pd.read_csv(
+                ftp_p, 
+                index_col='date', 
+                usecols=['date', 'ftp'],
+                parse_dates=True
+            )
+            return ftp_pd
+        else:
+            return None
+
+    def __get_ftp(self, timestamp):
+        return 0
 
     def __get_rides(self, activities):
         rides = defaultdict(list)
@@ -90,18 +107,19 @@ class StravaExport:
             athlete['id'] = self.id
             return athlete.reindex(columns=athlete_metrics)
 
-    def __process_fit(self, fit_file):
-        df = pd.DataFrame([])
+    def __process_fit(self, fit_file):        
         if fit_file.endswith('.fit.gz'):
             with gzip.open(fit_file, 'rb') as fit:
                 raw = fit.read()                
-                fitfile = FitFile(raw)                
+                fitfile = FitFile(raw)
                 for session in fitfile.get_messages('session'):
                     head = list(session.get_values())
-                    data = list(session.get_values().values())                    
-                    df = df.append(pd.DataFrame([data], columns=head), sort=True)
-        df['id'] = self.id       
-        return df.reindex(columns=ride_metrics)
+                    data = list(session.get_values().values())
+                    df = pd.DataFrame([data], columns=head)
+                    df['id'] = self.id
+                    df['ftp'] = self.__get_ftp(df['timestamp'][0])
+                    # Process first session only
+                    return df.reindex(columns=ride_metrics)
 
     def rides_pd(self):
         rides = pd.DataFrame([])
@@ -114,7 +132,7 @@ class StravaExport:
             except Exception as e:
                 c[type(e).__name__] += 1
             else:
-                c['success'] += 1
+                c['Success'] += 1
         print(c)
         return rides
 
@@ -139,13 +157,13 @@ def main():
         z_path = os.path.join(zip_dir, z)
         z_out = os.path.join(pro_dir, z_name)
 
-        x = StravaExport(z_path, z_out)
+        x = StravaExport(z_path, z_out)        
         x.extract_zip()
         df1 = x.athlete_pd()
         df2 = x.rides_pd()
 
         athletes = athletes.append(df1, sort=True)
-        rides = rides.append(df2, sort=True)
+        rides = rides.append(df2, sort=True)        
 
     print(tab(athletes, tablefmt='psql'))
     print('Saving output to: {}'.format(pro_dir))
