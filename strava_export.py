@@ -18,8 +18,7 @@ zip_dir = os.path.join(base_dir, 'strava')
 pro_dir = os.path.join(base_dir, 'process')
 
 athlete_metrics = [
-    'id',
-    'email',
+    'id',    
     'firstname',
     'lastname',
     'sex',    
@@ -27,14 +26,15 @@ athlete_metrics = [
 ]
 
 ride_metrics = [
+    'id',
+    'ftp',
     'avg_cadence',
     'avg_heart_rate',
     'avg_power',
     'avg_speed',
     'enhanced_avg_speed',
-    'enhanced_max_speed',
+    'enhanced_max_speed',    
     'intensity_factor',
-    'id',
     'max_cadence',
     'max_heart_rate',
     'max_power',
@@ -61,21 +61,28 @@ class StravaExport:
         self.ftp_hist = self.__ftp_hist()
 
     def __ftp_hist(self):
-        ftp_f = 'ftp_{}.csv'.format(self.id)
-        ftp_p = os.path.join(base_dir, 'ref', ftp_f)
-        if os.path.exists(ftp_p):
+        ftp_file = 'ftp_{}.csv'.format(self.id)
+        ftp_path = os.path.join(base_dir, 'ref', ftp_file)
+        if os.path.exists(ftp_path):
             ftp_pd = pd.read_csv(
-                ftp_p, 
+                ftp_path, 
                 index_col='date', 
                 usecols=['date', 'ftp'],
                 parse_dates=True
-            )
-            return ftp_pd
+            )            
+            return ftp_pd.sort_index(ascending=False)
         else:
             return None
 
     def __get_ftp(self, timestamp):
-        return 0
+        ftp = 0
+        if not self.ftp_hist is None:
+            try:
+                idx = self.ftp_hist.index.get_loc(timestamp, method='backfill')
+                ftp = self.ftp_hist.iloc[idx]['ftp']
+            except KeyError:
+                pass
+        return ftp
 
     def __get_rides(self, activities):
         rides = defaultdict(list)
@@ -92,7 +99,7 @@ class StravaExport:
         with zipfile.ZipFile(self.zip_file, 'r') as z:
             z.extract('profile.csv', self.out)
             act_file = z.extract('activities.csv', self.out)
-            act_ride = self.__get_rides(act_file)
+            act_ride = self.__get_rides(act_file)            
             for files in act_ride.values():
                 [z.extract(fit, self.out)
                  for fit in files if fit.endswith('.fit.gz')]
@@ -129,8 +136,8 @@ class StravaExport:
             try:
                 df = self.__process_fit(os.path.join(act_path, fit_file))
                 rides = rides.append(df, sort=True)                
-            except Exception as e:
-                c[type(e).__name__] += 1
+            except Exception as e:                
+                c[type(e).__name__] += 1                
             else:
                 c['Success'] += 1
         print(c)
@@ -165,7 +172,11 @@ def main():
         athletes = athletes.append(df1, sort=True)
         rides = rides.append(df2, sort=True)        
 
-    print(tab(athletes, tablefmt='psql'))
+    rides = rides[rides.ftp > 0]
+    rc = rides.groupby('id').size().rename('num_rides')
+    athletes = athletes.merge(rc.to_frame(), left_on='id', right_on='id')
+
+    print(tab(athletes, headers='keys', tablefmt='psql'))
     print('Saving output to: {}'.format(pro_dir))
     
     athletes.to_csv(os.path.join(pro_dir, 'athletes.csv'), index=False)
