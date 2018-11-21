@@ -1,4 +1,3 @@
-import sys
 import os
 import shutil
 import csv
@@ -8,7 +7,6 @@ import pandas as pd
 
 from collections import Counter, defaultdict
 from fitparse import FitFile
-from fitparse.utils import FitCRCError
 from tqdm import tqdm
 from tabulate import tabulate as tab
 
@@ -18,10 +16,10 @@ zip_dir = os.path.join(base_dir, 'strava')
 pro_dir = os.path.join(base_dir, 'process')
 
 athlete_metrics = [
-    'id',    
+    'id',
     'firstname',
     'lastname',
-    'sex',    
+    'sex',
     'weight'
 ]
 
@@ -33,7 +31,7 @@ ride_metrics = [
     'avg_power',
     'avg_speed',
     'enhanced_avg_speed',
-    'enhanced_max_speed',    
+    'enhanced_max_speed',
     'intensity_factor',
     'max_cadence',
     'max_heart_rate',
@@ -53,6 +51,7 @@ ride_metrics = [
     'training_stress_score'
 ]
 
+
 class StravaExport:
     def __init__(self, path, out):
         self.zip_file = path
@@ -65,18 +64,18 @@ class StravaExport:
         ftp_path = os.path.join(base_dir, 'ref', ftp_file)
         if os.path.exists(ftp_path):
             ftp_pd = pd.read_csv(
-                ftp_path, 
-                index_col='date', 
+                ftp_path,
+                index_col='date',
                 usecols=['date', 'ftp'],
                 parse_dates=True
-            )            
+            )
             return ftp_pd.sort_index(ascending=False)
         else:
             return None
 
     def __get_ftp(self, timestamp):
         ftp = 0
-        if not self.ftp_hist is None:
+        if self.ftp_hist is not None:
             try:
                 idx = self.ftp_hist.index.get_loc(timestamp, method='backfill')
                 ftp = self.ftp_hist.iloc[idx]['ftp']
@@ -99,7 +98,7 @@ class StravaExport:
         with zipfile.ZipFile(self.zip_file, 'r') as z:
             z.extract('profile.csv', self.out)
             act_file = z.extract('activities.csv', self.out)
-            act_ride = self.__get_rides(act_file)            
+            act_ride = self.__get_rides(act_file)
             for files in act_ride.values():
                 [z.extract(fit, self.out)
                  for fit in files if fit.endswith('.fit.gz')]
@@ -114,10 +113,10 @@ class StravaExport:
             athlete['id'] = self.id
             return athlete.reindex(columns=athlete_metrics)
 
-    def __process_fit(self, fit_file):        
+    def __process_fit(self, fit_file):
         if fit_file.endswith('.fit.gz'):
             with gzip.open(fit_file, 'rb') as fit:
-                raw = fit.read()                
+                raw = fit.read()
                 fitfile = FitFile(raw)
                 for session in fitfile.get_messages('session'):
                     head = list(session.get_values())
@@ -135,13 +134,14 @@ class StravaExport:
         for fit_file in tqdm(os.listdir(act_path), unit='file'):
             try:
                 df = self.__process_fit(os.path.join(act_path, fit_file))
-                rides = rides.append(df, sort=True)                
-            except Exception as e:                
-                c[type(e).__name__] += 1                
+                rides = rides.append(df, sort=True)
+            except Exception as e:
+                c[type(e).__name__] += 1
             else:
                 c['Success'] += 1
         print(c)
         return rides
+
 
 def __mkpro():
     if os.path.exists(pro_dir) and os.path.isdir(pro_dir):
@@ -150,6 +150,7 @@ def __mkpro():
 
     print('Making directory {}'.format(pro_dir))
     os.makedirs(pro_dir)
+
 
 def main():
     __mkpro()
@@ -164,13 +165,13 @@ def main():
         z_path = os.path.join(zip_dir, z)
         z_out = os.path.join(pro_dir, z_name)
 
-        x = StravaExport(z_path, z_out)        
+        x = StravaExport(z_path, z_out)
         x.extract_zip()
         df1 = x.athlete_pd()
         df2 = x.rides_pd()
 
         athletes = athletes.append(df1, sort=True)
-        rides = rides.append(df2, sort=True)        
+        rides = rides.append(df2, sort=True)
 
     rides = rides[rides.ftp > 0]
     rc = rides.groupby('id').size().rename('num_rides')
@@ -178,9 +179,10 @@ def main():
 
     print(tab(athletes, headers='keys', tablefmt='psql'))
     print('Saving output to: {}'.format(pro_dir))
-    
+
     athletes.to_csv(os.path.join(pro_dir, 'athletes.csv'), index=False)
     rides.to_csv(os.path.join(pro_dir, 'rides.csv'), index=False)
+
 
 if __name__ == "__main__":
     main()
