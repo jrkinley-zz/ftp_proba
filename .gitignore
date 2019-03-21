@@ -1,4 +1,7 @@
 __pycache__/
-data/
-.DS_Store
-.ipynb_checkpoints/
+data/process/export*
+data/strava/export*
+
+ftp-proba.sublime-workspace
+ftp-proba.sublime-project
+.*
